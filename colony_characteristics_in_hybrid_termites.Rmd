@@ -1,0 +1,871 @@
+---
+title: 'Maternal determination of soldier proportion and paternal determination of soldier sex ratio in hybrid Reticulitermes (Isoptera: Rhinotermitidae) termite colonies'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# packages
+```{r}
+install.packages("readxl")
+install.packages("ggplot2")
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("lme4")
+install.packages("car")
+install.packages("multcomp")
+
+library(readxl)
+library(ggplot2)
+library(tidyverse)
+library(lme4)
+library(car)
+library(multcomp)
+```
+
+# Figure 2a: soldier sex ratio in field colonies
+## * data loading
+```{r}
+s_sex_ratio_f <- read_excel("dataset1.xlsx", sheet="Figure 2a") %>% 
+  as.data.frame(.)
+
+s_sex_ratio_sum <- s_sex_ratio_f %>% 
+  group_by(species) %>% 
+  summarize(male = sum(number_of_male_soldiers),
+            female = sum(number_of_female_soldiers)
+            )
+s_sex_ratio_sum
+
+s_sex_ratio_Rs <- s_sex_ratio_sum %>% 
+  filter(species == "R. speratus")
+s_sex_ratio_Ra <- s_sex_ratio_sum %>% 
+  filter(species == "R. amamianus")
+```
+
+## * figure
+### * histogram of soldier sex ratio (R. amamianus)
+```{r}
+xmin <- 0
+xmax <- 1
+width <- 0.2
+ymin <- 0
+ymax <- 50
+binwidth <- 0.05
+
+par(ps=18)
+
+Ra_hist <-
+  ggplot(s_sex_ratio %>% filter(species == "R. amamianus"), aes(x = soldier_sex_ratio)) + 
+  geom_histogram(boundary = 0, binwidth = binwidth, fill="black", color="white") +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1), lim = c(0,1), expand = c(0,0)) +
+  scale_y_continuous(breaks = seq(0, 10, by = 2), lim = c(0,7), expand = c(0,0)) +
+  labs(x = "numerical sex ratio in soldiers (female ratio)",
+       y = "number of colonies", 
+       title ="") + 
+  theme_classic()
+Ra_hist
+
+# save figure
+ggsave(file = "Figure 2a-1.pdf", plot = Ra_hist, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+### * histogram of soldier sex ratio (R. speratus)
+```{r}
+Rs_hist <-
+  ggplot(s_sex_ratio %>% filter(species == "R. speratus"), aes(x = soldier_sex_ratio)) + 
+  geom_histogram(boundary = 0, binwidth = binwidth, fill="black", color="white") +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1), lim = c(0,1), expand = c(0,0)) +
+  scale_y_continuous(breaks = seq(0, 10, by = 2), lim = c(0,7), expand = c(0,0)) +
+  labs(x = "numerical sex ratio in soldiers (female ratio)",
+       y = "number of colonies", 
+       title ="") + 
+  theme_classic()
+Rs_hist
+
+# save figure
+ggsave(file = "Figure 2a-2.pdf", plot = Rs_hist, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+## * statistical analysis
+### * sex ratio bias in R. amanianus
+```{r}
+binom.test(c(s_sex_ratio_Ra$female,s_sex_ratio_Ra$male), p = 0.5)
+```
+
+### * sex ratio bias in R. speratus
+```{r}
+binom.test(c(s_sex_ratio_Rs$female,s_sex_ratio_Rs$male), p = 0.5)
+```
+
+
+# Figure 2b: soldier sex ratio in lab colonies (2 years old)
+## * data loading
+```{r}
+s_sex_ratio_l <- read_excel("dataset1.xlsx", sheet="Fig2b, Fig3a, Fig4a") %>% 
+  as.data.frame(.) %>% 
+  separate(cross_type, sep = "_", c("father_species", "mother_species")) %>% 
+  mutate(cross_type = paste(father_species, mother_species, sep="_"))
+```
+
+## * figure
+```{r}
+s_sex_ratio_l$cross_type <- factor(s_sex_ratio_l$cross_type, levels=c("Ra_Ra","Ra_Rs","Rs_Ra","Rs_Rs"))
+
+Figure_2b <-
+ggplot(s_sex_ratio_l, aes(y = soldier_sex_ratio, x = factor(cross_type))) + 
+  geom_boxplot(outlier.shape = NA, 
+               width=0.6 
+               ) + 
+  geom_jitter(group = "cross_type", 
+              color = "black", 
+              height = 0, 
+              width = 0.1, 
+              alpha = 0.5, 
+              size = 1 
+              ) +
+  scale_y_continuous(breaks=seq(0,1,by=0.1),limits=c(0,1),expand=c(0,0)) +
+  labs(y = "numerical sex ratio in soldiers (female ratio)", 
+       x = "combination of parent species (male × female)",
+       title ="") +
+  theme_classic()
+Figure_2b
+
+# save figure
+ggsave(file = "Figure 2b.pdf", plot = Figure_2b, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+## * statistical analysis
+### * multiple comparison
+```{r}
+model_fig2b <- glmer(cbind(number_of_female_soldiers, number_of_male_soldiers) ~ cross_type + (1|colony_ID), family=binomial, s_sex_ratio_l)
+result <- glht(model_fig2b, linfct = mcp(cross_type="Tukey"))
+summary(result)
+cld(result, level=0.05, decreasing = TRUE)
+```
+
+### * interaction of father and mother species
+```{r}
+model_fig2b_i <- glmer(cbind(number_of_female_soldiers, number_of_male_soldiers) ~ father_species * mother_species + (1|colony_ID), family=binomial, s_sex_ratio_l)
+model_fig2b_i_null <- glmer(cbind(number_of_female_soldiers, number_of_male_soldiers) ~ father_species + mother_species + (1|colony_ID), family=binomial, s_sex_ratio_l)
+summary(model_fig2b_i)
+Anova(model_fig2b_i)
+anova(model_fig2b_i, model_fig2b_i_null, test="Chi")
+```
+
+
+# Figure 2c: soldier sex ratio in lab colonies (2.5 years old)
+## * data loading
+```{r}
+s_sex_ratio_l2 <- read_excel("dataset1.xlsx", sheet="Fig2c, Fig3b, Fig4b") %>% 
+  as.data.frame(.) %>% 
+  separate(cross_type, sep = "_", c("father_species", "mother_species")) %>% 
+  mutate(cross_type = paste(father_species, mother_species, sep="_")) %>% 
+  mutate(number_of_soldiers = number_of_male_soldiers+number_of_female_soldiers) %>% 
+  mutate(soldier_sex_ratio = number_of_female_soldiers/number_of_soldiers) %>% 
+  mutate(soldier_proportion = number_of_soldiers/number_of_workers)
+
+```
+
+## * figure
+```{r}
+s_sex_ratio_l2$cross_type <- factor(s_sex_ratio_l2$cross_type, levels=c("Ra_Ra","Ra_Rs","Rs_Ra","Rs_Rs"))
+
+Figure_2c <-
+ggplot(s_sex_ratio_l2, aes(y = soldier_sex_ratio, x = factor(cross_type))) + 
+  geom_boxplot(outlier.shape = NA, 
+               width=0.6 
+               ) + 
+  geom_jitter(group = "cross_type", 
+              color = "black", 
+              height = 0, 
+              width = 0.1, 
+              alpha = 0.5, 
+              size = 1 
+              ) +
+  scale_y_continuous(breaks=seq(0,1,by=0.1),limits=c(0,1),expand=c(0,0)) +
+  labs(y = "numerical sex ratio in soldiers (female ratio)", 
+       x = "combination of parent species (male × female)",
+       title ="") +
+  theme_classic()
+Figure_2c
+
+# save figure
+ggsave(file = "Figure 2c.pdf", plot = Figure_2c, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+## * statistical analysis
+### * multiple comparison
+```{r}
+model_fig2c <- glmer(cbind(number_of_female_soldiers, number_of_male_soldiers) ~ cross_type + (1|colony_ID), family=binomial, s_sex_ratio_l2)
+result <- glht(model_fig2c, linfct = mcp(cross_type="Tukey"))
+summary(result)
+cld(result, level=0.05, decreasing = TRUE)
+```
+
+### * interaction of father and mother species
+```{r}
+model_fig2c_i <- glmer(cbind(number_of_female_soldiers, number_of_male_soldiers) ~ father_species * mother_species + (1|colony_ID), family=binomial, s_sex_ratio_l2)
+model_fig2c_i_null <- glmer(cbind(number_of_female_soldiers, number_of_male_soldiers) ~ father_species + mother_species + (1|colony_ID), family=binomial, s_sex_ratio_l2)
+summary(model_fig2c_i)
+Anova(model_fig2c_i)
+anova(model_fig2c_i, model_fig2c_i_null, test="Chi")
+```
+
+
+# Figure 3a: soldier ratio in lab colonies (2 years old)
+## * data loading
+```{r}
+s_ratio_l <- read_excel("dataset1.xlsx", sheet="Fig2b, Fig3a, Fig4a") %>% 
+  as.data.frame(.) %>% 
+  separate(cross_type, sep = "_", c("father_species", "mother_species")) %>% 
+  mutate(cross_type = paste(father_species, mother_species, sep="_")) %>% 
+  mutate(number_of_soldiers = number_of_male_soldiers+number_of_female_soldiers) %>% 
+  mutate(soldier_sex_ratio = number_of_female_soldiers/number_of_soldiers) %>% 
+  mutate(soldier_proportion = number_of_soldiers/number_of_workers)
+```
+
+## * figure
+```{r}
+s_ratio_l$cross_type <- factor(s_ratio_l$cross_type, levels=c("Ra_Ra","Ra_Rs","Rs_Ra","Rs_Rs"))
+
+Figure_3a <-
+ggplot(s_ratio_l, aes(y = soldier_proportion, x = factor(cross_type))) + 
+  geom_boxplot(outlier.shape = NA, 
+               width=0.6 
+               ) + 
+  geom_jitter(group = "cross_type", 
+              color = "black", 
+              height = 0, 
+              width = 0.1, 
+              alpha = 0.5, 
+              size = 1 
+              ) +
+  scale_y_continuous(breaks=seq(0,1,by=0.025),limits=c(0,0.160),expand=c(0,0)) +
+  labs(y = "numerical sex ratio in soldiers (female ratio)", 
+       x = "combination of parent species (male × female)",
+       title ="") +
+  theme_classic()
+Figure_3a
+
+# save figure
+ggsave(file = "Figure 3a.pdf", plot = Figure_3a, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+## * statistical analysis
+### * multiple comparison
+```{r}
+model_fig3a <- glmer(cbind(number_of_soldiers, number_of_workers) ~ cross_type + (1|colony_ID), family=binomial, s_ratio_l)
+result <- glht(model_fig3a, linfct = mcp(cross_type="Tukey"))
+summary(result)
+cld(result, level=0.05, decreasing = TRUE)
+```
+
+### * interaction of father and mother species
+```{r}
+model_fig3a_i <- glmer(cbind(number_of_soldiers, number_of_workers) ~ father_species * mother_species + (1|colony_ID), family=binomial, s_ratio_l)
+model_fig3a_i_null <- glmer(cbind(number_of_soldiers, number_of_workers) ~ father_species + mother_species + (1|colony_ID), family=binomial, s_ratio_l)
+summary(model_fig3a_i)
+Anova(model_fig3a_i)
+anova(model_fig3a_i, model_fig3a_i_null, test="Chi")
+```
+
+
+# Figure 3b: soldier ratio in lab colonies (2.5 years old)
+## * data loading
+```{r}
+s_ratio_l2 <- read_excel("dataset1.xlsx", sheet="Fig2c, Fig3b, Fig4b") %>% 
+  as.data.frame(.) %>% 
+  separate(cross_type, sep = "_", c("father_species", "mother_species")) %>% 
+  mutate(cross_type = paste(father_species, mother_species, sep="_")) %>% 
+  mutate(number_of_soldiers = number_of_male_soldiers+number_of_female_soldiers) %>% 
+  mutate(soldier_sex_ratio = number_of_female_soldiers/number_of_soldiers) %>% 
+  mutate(soldier_proportion = number_of_soldiers/number_of_workers)
+```
+
+## * figure
+```{r}
+s_ratio_l2$cross_type <- factor(s_ratio_l2$cross_type, levels=c("Ra_Ra","Ra_Rs","Rs_Ra","Rs_Rs"))
+
+Figure_3b <-
+ggplot(s_ratio_l2, aes(y = soldier_proportion, x = factor(cross_type))) + 
+  geom_boxplot(outlier.shape = NA, 
+               width=0.6 
+               ) + 
+  geom_jitter(group = "cross_type", 
+              color = "black", 
+              height = 0, 
+              width = 0.1, 
+              alpha = 0.5, 
+              size = 1 
+              ) +
+  scale_y_continuous(breaks=seq(0,1,by=0.025),limits=c(0,0.160),expand=c(0,0)) +
+  labs(y = "numerical sex ratio in soldiers (female ratio)", 
+       x = "combination of parent species (male × female)",
+       title ="") +
+  theme_classic()
+Figure_3b
+
+# save figure
+ggsave(file = "Figure 3b.pdf", plot = Figure_3b, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+## * statistical analysis
+### * multiple comparison
+```{r}
+model_fig3b <- glmer(cbind(number_of_soldiers, number_of_workers) ~ cross_type + (1|colony_ID), family=binomial, s_ratio_l2)
+result <- glht(model_fig3b, linfct = mcp(cross_type="Tukey"))
+summary(result)
+cld(result, level=0.05, decreasing = TRUE)
+```
+
+### * interaction of father and mother species
+```{r}
+model_fig3b_i <- glmer(cbind(number_of_soldiers, number_of_workers) ~ father_species * mother_species + (1|colony_ID), family=binomial, s_ratio_l2)
+model_fig3b_i_null <- glmer(cbind(number_of_soldiers, number_of_workers) ~ father_species + mother_species + (1|colony_ID), family=binomial, s_ratio_l2)
+summary(model_fig3b_i)
+Anova(model_fig3b_i)
+anova(model_fig3b_i, model_fig3b_i_null, test="Chi")
+```
+
+
+# Figure 4a: number of workers in lab colonies (2 years old)
+## * data loading
+```{r}
+w_number <- read_excel("dataset1.xlsx", sheet="Fig2b, Fig3a, Fig4a") %>% 
+  as.data.frame(.) %>% 
+  separate(cross_type, sep = "_", c("father_species", "mother_species")) %>% 
+  mutate(cross_type = paste(father_species, mother_species, sep="_"))
+```
+
+## * figure
+```{r}
+w_number$cross_type <- factor(w_number$cross_type, levels=c("Ra_Ra","Ra_Rs","Rs_Ra","Rs_Rs"))
+
+Figure_4a <-
+ggplot(w_number, aes(y = number_of_workers, x = factor(cross_type))) + 
+  geom_boxplot(outlier.shape = NA, 
+               width=0.6 
+               ) + 
+  geom_jitter(group = "cross_type", 
+              color = "black", 
+              height = 0, 
+              width = 0.1, 
+              alpha = 0.5, 
+              size = 1 
+              ) +
+  scale_y_continuous(breaks=seq(0,2000,by=100),limits=c(0,550),expand=c(0,0)) +
+  labs(y = "number of workers in a colony", 
+       x = "combination of parent species (male × female)",
+       title ="") +
+  theme_classic()
+Figure_4a
+
+# save figure
+ggsave(file = "Figure 4a.pdf", plot = Figure_4a, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+## * statistical analysis
+### * multiple comparison
+```{r}
+model_fig4a <- glmer(number_of_workers ~ cross_type + (1|colony_ID), family=poisson, w_number)
+result <- glht(model_fig4a, linfct = mcp(cross_type="Tukey"))
+summary(result)
+cld(result, level=0.05, decreasing = TRUE)
+```
+
+### * interaction of father and mother species
+```{r}
+model_fig4a_i <- glmer(number_of_workers ~ father_species * mother_species + (1|colony_ID), family=poisson, w_number)
+model_fig4a_i_null <- glmer(number_of_workers ~ father_species + mother_species + (1|colony_ID), family=poisson, w_number)
+summary(model_fig4a_i)
+Anova(model_fig4a_i)
+anova(model_fig4a_i, model_fig4a_i_null, test="Chi")
+```
+
+
+# Figure 4b: number of workers in lab colonies (2.5 years old)
+## * data loading
+```{r}
+w_number2 <- read_excel("dataset1.xlsx", sheet="Fig2c, Fig3b, Fig4b") %>% 
+  as.data.frame(.) %>% 
+  separate(cross_type, sep = "_", c("father_species", "mother_species")) %>% 
+  mutate(cross_type = paste(father_species, mother_species, sep="_"))
+```
+
+## * figure
+```{r}
+w_number2$cross_type <- factor(w_number2$cross_type, levels=c("Ra_Ra","Ra_Rs","Rs_Ra","Rs_Rs"))
+
+Figure_4b <-
+ggplot(w_number2, aes(y = number_of_workers, x = factor(cross_type))) + 
+  geom_boxplot(outlier.shape = NA, 
+               width=0.6 
+               ) + 
+  geom_jitter(group = "cross_type", 
+              color = "black", 
+              height = 0, 
+              width = 0.1, 
+              alpha = 0.5, 
+              size = 1 
+              ) +
+  scale_y_continuous(breaks=seq(0,2000,by=200),limits=c(0,1250),expand=c(0,0)) +
+  labs(y = "number of workers in a colony", 
+       x = "combination of parent species (male × female)",
+       title ="") +
+  theme_classic()
+Figure_4b
+
+# save figure
+ggsave(file = "Figure 4b.pdf", plot = Figure_4b, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+## * statistical analysis
+### * multiple comparison
+```{r}
+model_fig4b <- glmer(number_of_workers ~ cross_type + (1|colony_ID), family=poisson, w_number2)
+result <- glht(model_fig4b, linfct = mcp(cross_type="Tukey"))
+summary(result)
+cld(result, level=0.05, decreasing = TRUE)
+```
+
+### * interaction of father and mother species
+```{r}
+model_fig4b_i <- glmer(number_of_workers ~ father_species * mother_species + (1|colony_ID), family=poisson, w_number2)
+model_fig4b_i_null <- glmer(number_of_workers ~ father_species + mother_species + (1|colony_ID), family=poisson, w_number2)
+summary(model_fig4b_i)
+Anova(model_fig4b_i)
+anova(model_fig4b_i, model_fig4b_i_null, test="Chi")
+```
+
+
+# Figure 5b: offspring survival rate
+## * data loading
+```{r}
+survival_rate <- read_excel("dataset1.xlsx", sheet="Figure 5") %>% 
+  as.data.frame(.) %>% 
+  mutate(survival_rate = number_of_larvae_35d/20) %>% 
+  separate(cross_type, sep = "_", c("father_species", "mother_species")) %>% 
+  mutate(cross_type = paste(father_species, mother_species, sep="_"))
+```
+
+## * figure
+```{r}
+survival_rate$cross_type <- factor(survival_rate$cross_type, levels=c("Ra_Ra","Ra_Rs","Rs_Ra","Rs_Rs"))
+
+Figure_5b <-
+ggplot(survival_rate, aes(y = survival_rate, x = factor(cross_type))) + 
+  geom_boxplot(outlier.shape = NA, 
+               width=0.6 
+               ) + 
+  geom_jitter(group = "cross_type", 
+              color = "black", 
+              height = 0, 
+              width = 0.1, 
+              alpha = 0.5, 
+              size = 1 
+              ) +
+  scale_y_continuous(breaks=seq(0,1,by=0.1),limits=c(0,1),expand=c(0,0)) +
+  labs(y = "numerical sex ratio in soldiers (female ratio)", 
+       x = "combination of parent species (male × female)",
+       title ="") +
+  theme_classic()
+Figure_5b
+
+# save figure
+ggsave(file = "Figure 5b.pdf", plot = Figure_5b, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+## * statistical analysis
+### * multiple comparison
+```{r}
+model_fig5a <- glmer(cbind(number_of_larvae_35d, 20 - number_of_larvae_35d) ~ cross_type + (1|colony_ID), family=binomial, survival_rate)
+result <- glht(model_fig5a, linfct = mcp(cross_type="Tukey"))
+summary(result)
+cld(result, level=0.05, decreasing = TRUE)
+```
+
+### * interaction of father and mother species
+```{r}
+model_fig5a_i <- glmer(cbind(number_of_larvae_35d, 20 - number_of_larvae_35d) ~ father_species * mother_species + (1|colony_ID), family=binomial, survival_rate)
+model_fig5a_i_null <- glmer(cbind(number_of_larvae_35d, 20 - number_of_larvae_35d) ~ father_species + mother_species + (1|colony_ID), family=binomial, survival_rate)
+summary(model_fig5a_i)
+Anova(model_fig5a_i)
+anova(model_fig5a_i, model_fig5a_i_null, test="Chi")
+```
+
+
+# Figure 5c: offspring sex ratio
+## * data loading
+```{r}
+w_sex_ratio <- read_excel("dataset1.xlsx", sheet="Figure 5") %>% 
+  as.data.frame(.)
+
+w_sex_ratio_sum <- w_sex_ratio %>% 
+  group_by(cross_type) %>% 
+  summarize(male = sum(number_of_male_workers),
+            female = sum(number_of_female_workers)
+            )
+w_sex_ratio_sum
+
+w_sex_ratio_RaRa <- w_sex_ratio_sum %>% 
+  filter(cross_type == "Ra_Ra")
+w_sex_ratio_RaRs <- w_sex_ratio_sum %>% 
+  filter(cross_type == "Ra_Rs")
+w_sex_ratio_RsRa <- w_sex_ratio_sum %>% 
+  filter(cross_type == "Rs_Ra")
+w_sex_ratio_RsRs <- w_sex_ratio_sum %>% 
+  filter(cross_type == "Rs_Rs")
+```
+
+## * figure
+```{r}
+survival_rate$cross_type <- factor(survival_rate$cross_type, levels=c("Ra_Ra","Ra_Rs","Rs_Ra","Rs_Rs"))
+
+Figure_5c <-
+ggplot(survival_rate, aes(y = offspring_sex_ratio, x = factor(cross_type))) + 
+  geom_boxplot(outlier.shape = NA, 
+               width=0.6 
+               ) + 
+  geom_jitter(group = "cross_type", 
+              color = "black", 
+              height = 0, 
+              width = 0.1, 
+              alpha = 0.5, 
+              size = 1 
+              ) +
+  scale_y_continuous(breaks=seq(0,1,by=0.1),limits=c(0,1)) +
+  labs(y = "numerical sex ratio (female ratio)", 
+       x = "combination of parent species (male × female)",
+       title ="") +
+  theme_classic()
+Figure_5c
+
+# save figure
+ggsave(file = "Figure 5c.pdf", plot = Figure_5c, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+### * histogram of soldier sex ratio (Ra × Ra)
+```{r}
+xmin <- 0
+xmax <- 1
+width <- 0.2
+ymin <- 0
+ymax <- 50
+binwidth <- 0.1
+
+par(ps=18)
+
+RaRa_hist <-
+  ggplot(w_sex_ratio %>% filter(cross_type == "Ra_Ra"), aes(x = offspring_sex_ratio)) + 
+  geom_histogram(boundary = 0, binwidth = binwidth, fill="black", color="white") +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1), lim = c(0,1), expand = c(0,0)) +
+  scale_y_continuous(breaks = seq(0, 10, by = 1), lim = c(0,3.2), expand = c(0,0)) +
+  labs(x = "numerical sex ratio in workers(female ratio)",
+       y = "number of colonies", 
+       title ="") + 
+  theme_classic()
+RaRa_hist
+
+# save figure
+ggsave(file = "Figure 5d.pdf", plot = RaRa_hist, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+### * histogram of soldier sex ratio (Ra × Rs)
+```{r}
+RaRs_hist <-
+  ggplot(w_sex_ratio %>% filter(cross_type == "Ra_Rs"), aes(x = offspring_sex_ratio)) + 
+  geom_histogram(boundary = 0, binwidth = binwidth, fill="black", color="white") +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1), lim = c(0,1), expand = c(0,0)) +
+  scale_y_continuous(breaks = seq(0, 10, by = 1), lim = c(0,5.2), expand = c(0,0)) +
+  labs(x = "numerical sex ratio in workers (female ratio)",
+       y = "number of colonies", 
+       title ="") + 
+  theme_classic()
+RaRs_hist
+
+# save figure
+ggsave(file = "Figure 5e.pdf", plot = RaRs_hist, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+### * histogram of soldier sex ratio (Rs × Ra)
+```{r}
+RsRa_hist <-
+  ggplot(w_sex_ratio %>% filter(cross_type == "Rs_Ra"), aes(x = offspring_sex_ratio)) + 
+  geom_histogram(boundary = 0, binwidth = binwidth, fill="black", color="white") +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1), lim = c(0,1), expand = c(0,0)) +
+  scale_y_continuous(breaks = seq(0, 10, by = 1), lim = c(0,5.2), expand = c(0,0)) +
+  labs(x = "numerical sex ratio in workers (female ratio)",
+       y = "number of colonies", 
+       title ="") + 
+  theme_classic()
+RsRa_hist
+
+# save figure
+ggsave(file = "Figure 5f.pdf", plot = RsRa_hist, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+### * histogram of soldier sex ratio (Rs × Ra)
+```{r}
+RsRs_hist <-
+  ggplot(w_sex_ratio %>% filter(cross_type == "Rs_Rs"), aes(x = offspring_sex_ratio)) + 
+  geom_histogram(boundary = 0, binwidth = binwidth, fill="black", color="white") +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1), lim = c(0,1), expand = c(0,0)) +
+  scale_y_continuous(breaks = seq(0, 10, by = 1), lim = c(0,5.2), expand = c(0,0)) +
+  labs(x = "numerical sex ratio in workers (female ratio)",
+       y = "number of colonies", 
+       title ="") + 
+  theme_classic()
+RsRs_hist
+
+# save figure
+ggsave(file = "Figure 5g.pdf", plot = RsRs_hist, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+## * statistical analysis
+### * multiple comparison
+```{r}
+model_fig5b <- glmer(cbind(number_of_male_workers, number_of_female_workers) ~ cross_type + (1|colony_ID), family=binomial, w_sex_ratio)
+result <- glht(model_fig5b, linfct = mcp(cross_type="Tukey"))
+summary(result)
+cld(result, level=0.05, decreasing = TRUE)
+```
+
+### * sex ratio bias in Ra × Ra cross
+```{r}
+binom.test(c(w_sex_ratio_RaRa$female,w_sex_ratio_RaRa$male), p = 0.5)
+```
+
+### * sex ratio bias in Ra × Rs cross
+```{r}
+binom.test(c(w_sex_ratio_RaRs$female,w_sex_ratio_RaRs$male), p = 0.5)
+```
+
+### * sex ratio bias in Rs × Ra cross
+```{r}
+binom.test(c(w_sex_ratio_RsRa$female,w_sex_ratio_RsRa$male), p = 0.5)
+```
+
+### * sex ratio bias in Rs × Rs cross
+```{r}
+binom.test(c(w_sex_ratio_RsRs$female,w_sex_ratio_RsRs$male), p = 0.5)
+```
+
+
+# Figure S1a: soldier sex ratio in 1-year-old colonies
+## * data loading
+```{r}
+s_sex_ratio_1 <- read_excel("dataset2.xlsx", sheet="FigS1a") %>% 
+  as.data.frame(.)
+
+s_sex_ratio_1_sum <- s_sex_ratio_1 %>% 
+  summarize(male = sum(number_of_male_soldiers),
+            female = sum(number_of_female_soldiers)
+            )
+s_sex_ratio_1_sum
+```
+
+## * figure
+```{r}
+s_sex_ratio_1_fig <- s_sex_ratio_1_sum %>% 
+  pivot_longer(., 
+               male:female, 
+               names_to = "sex", 
+               values_to = "number_of_soldiers"
+               )
+
+Fig_S1a <-
+ggplot(s_sex_ratio_1_fig, aes(x="", y=number_of_soldiers, fill=sex)) +
+  geom_bar(width = 1, stat = "identity") + 
+  coord_polar("y", start=0)
+Fig_S1a
+
+# save figure
+ggsave(file = "Figure S1a.pdf", plot = Fig_S1a, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+## * statistical analysis
+### * sex ratio bias in R. speratus
+```{r}
+binom.test(c(s_sex_ratio_1_sum$female,s_sex_ratio_1_sum$male), p = 0.5)
+```
+
+
+# Figure S1b: soldier sex ratio in 2.5- and 4.5-years-old colonies
+## * data loading
+```{r}
+age_comp <- read_excel("dataset2.xlsx", sheet="FigS1b_c_d") %>% 
+  as.data.frame(.) %>% 
+  mutate(number_of_soldiers = number_of_male_soldiers+number_of_female_soldiers) %>% 
+  mutate(soldier_sex_ratio = number_of_female_soldiers/number_of_soldiers) %>% 
+  mutate(soldier_proportion = number_of_soldiers/number_of_workers)
+
+age_2 <- age_comp %>% 
+  filter(years_elapsed_since_colony_foundation == "2.5") %>% 
+  summarize(male = sum(number_of_male_soldiers),
+            female = sum(number_of_female_soldiers)
+            )
+
+age_4 <- age_comp %>% 
+  filter(years_elapsed_since_colony_foundation == "4.5") %>% 
+  summarize(male = sum(number_of_male_soldiers),
+            female = sum(number_of_female_soldiers)
+            )
+```
+
+## * figure
+```{r}
+Figure_S1b <-
+ggplot(age_comp, aes(y = soldier_sex_ratio, x = factor(years_elapsed_since_colony_foundation))) + 
+  geom_boxplot(outlier.shape = NA, 
+               width=0.6 
+               ) + 
+  geom_jitter(group = "years_elapsed_since_colony_foundation", 
+              color = "black", 
+              height = 0, 
+              width = 0.1, 
+              alpha = 0.5, 
+              size = 1 
+              ) +
+  scale_y_continuous(breaks=seq(0,1,by=0.1),limits=c(0,1),expand=c(0,0)) +
+  labs(y = "numerical sex ratio in soldiers (female ratio)", 
+       x = "colony age (years)",
+       title ="") +
+  theme_classic()
+Figure_S1b
+
+# save figure
+ggsave(file = "Figure S1b.pdf", plot = Figure_S1b, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+## * statistical analysis
+### * sex ratio bias in 2.5-years-old colonies
+```{r}
+binom.test(c(age_2$female,age_2$male), p = 0.5)
+```
+
+### * sex ratio bias in 4.5-years-old colonies
+```{r}
+binom.test(c(age_4$female,age_4$male), p = 0.5)
+```
+
+### * comparison
+```{r}
+model_figS1b <- glmer(cbind(number_of_female_soldiers, number_of_male_soldiers) ~ years_elapsed_since_colony_foundation + (1|colony_ID), family=binomial, age_comp)
+model_figS1b_null <- glmer(cbind(number_of_female_soldiers, number_of_male_soldiers) ~ 1 + (1|colony_ID), family=binomial, age_comp)
+summary(model_figS1b)
+Anova(model_figS1b)
+anova(model_figS1b, model_figS1b_null, test="Chi")
+```
+
+
+# Figure S1c: soldier proportion in 2.5- and 4.5-years-old colonies
+## * figure
+```{r}
+Figure_S1c <-
+ggplot(age_comp, aes(y = soldier_proportion, x = factor(years_elapsed_since_colony_foundation))) + 
+  geom_boxplot(outlier.shape = NA, 
+               width=0.6 
+               ) + 
+  geom_jitter(group = "years_elapsed_since_colony_foundation", 
+              color = "black", 
+              height = 0, 
+              width = 0.1, 
+              alpha = 0.5, 
+              size = 1 
+              ) +
+  scale_y_continuous(breaks=seq(0,1,by=0.01),limits=c(0,0.062),expand=c(0,0)) +
+  labs(y = "soldier proportion", 
+       x = "colony age (years)",
+       title ="") +
+  theme_classic()
+Figure_S1c
+
+# save figure
+ggsave(file = "Figure S1c.pdf", plot = Figure_S1c, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+## * statistical analysis
+### * multiple comparison
+```{r}
+model_figS1c <- glmer(cbind(number_of_soldiers, number_of_workers) ~ years_elapsed_since_colony_foundation + (1|colony_ID), family=binomial, age_comp)
+model_figS1c_null <- glmer(cbind(number_of_soldiers, number_of_workers) ~ 1 + (1|colony_ID), family=binomial, age_comp)
+summary(model_figS1c)
+Anova(model_figS1c)
+anova(model_figS1c, model_figS1c_null, test="Chi")
+```
+
+
+# Figure S1d: number of workers in 2.5- and 4.5-years-old colonies
+## * figure
+```{r}
+Figure_S1d <-
+ggplot(age_comp, aes(y = number_of_workers, x = factor(years_elapsed_since_colony_foundation))) + 
+  geom_boxplot(outlier.shape = NA, 
+               width=0.6 
+               ) + 
+  geom_jitter(group = "years_elapsed_since_colony_foundation", 
+              color = "black", 
+              height = 0, 
+              width = 0.1, 
+              alpha = 0.5, 
+              size = 1 
+              ) +
+  scale_y_continuous(breaks=seq(0,3000,by=500),limits=c(0,2600),expand=c(0,0)) +
+  labs(y = "number of workers", 
+       x = "colony age (years)",
+       title ="") +
+  theme_classic()
+Figure_S1d
+
+# save figure
+ggsave(file = "Figure S1d.pdf", plot = Figure_S1d, dpi = 300, width = 89, height = 89, units = c("mm"))
+```
+
+## * statistical analysis
+### * multiple comparison
+```{r}
+model_figS1d <- glmer(number_of_workers ~ years_elapsed_since_colony_foundation + (1|colony_ID), family=poisson, age_comp)
+model_figS1d_null <- glmer(number_of_workers ~ 1 + (1|colony_ID), family=poisson, age_comp)
+summary(model_figS1d)
+Anova(model_figS1d)
+anova(model_figS1d, model_figS1d_null, test="Chi")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
